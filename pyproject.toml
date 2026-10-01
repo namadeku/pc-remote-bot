@@ -1,0 +1,52 @@
+[project]
+name = "pc-remote-bot"
+version = "0.1.0"
+description = "Telegram bot to wake up and control a Windows PC"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mss>=10.2.0",
+    "psutil>=7.2.2",
+    "python-dotenv>=1.2.4",
+    "python-telegram-bot>=21",
+]
+
+[project.scripts]
+pc-remote-bot = "pc_remote_bot:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.40.1",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PL", "PT"]
+# RUF001: user-facing strings are in Russian.
+ignore = ["PLR2004", "RUF001"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q --strict-markers"
+asyncio_mode = "auto"
+
+[tool.basedpyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
