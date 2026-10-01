@@ -17,6 +17,7 @@ from telegram import (
     Update,
 )
 from telegram.constants import ParseMode
+from telegram.error import NetworkError
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -29,6 +30,7 @@ from telegram.ext import (
 
 from pc_remote_bot import system, wol
 from pc_remote_bot.config import Settings
+from pc_remote_bot.net import RetryingRequest
 
 log = logging.getLogger(__name__)
 
@@ -125,11 +127,17 @@ class Bot:
         return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
     def build(self) -> Application:
-        builder = ApplicationBuilder().token(self.settings.bot_token).concurrent_updates(True)
-        if self.settings.proxy_url:
-            builder = builder.proxy(self.settings.proxy_url).get_updates_proxy(
-                self.settings.proxy_url
+        proxy = self.settings.proxy_url
+        builder = (
+            ApplicationBuilder()
+            .token(self.settings.bot_token)
+            .concurrent_updates(True)
+            .request(
+                RetryingRequest(connect_timeout=10, read_timeout=20, write_timeout=20, proxy=proxy)
             )
+        )
+        if proxy:
+            builder = builder.get_updates_proxy(proxy)
         app = builder.post_init(self._post_init).build()
 
         owner = filters.User(user_id=self.settings.allowed_user_ids)
@@ -191,6 +199,9 @@ class Bot:
 
     async def on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.error("Handler failed", exc_info=context.error)
+        if isinstance(context.error, NetworkError):
+            # Telegram itself is unreachable, so an error reply would fail too.
+            return
         if isinstance(update, Update) and update.effective_message:
             await update.effective_message.reply_text(f"Ошибка: {context.error}")
 
