@@ -39,7 +39,7 @@ def test_control_mode_commands() -> None:
 
 
 def test_wake_only_mode_commands() -> None:
-    settings = replace(BASE, enable_control=False, enable_wake=True, wol_mac="04-7C-16-ED-7A-E0")
+    settings = replace(BASE, enable_control=False, enable_wake=True, wol_mac="02-AB-CD-EF-12-34")
     commands = registered_commands(settings)
     assert {"wake", "ping"} <= commands
     assert "cmd" not in commands
@@ -53,7 +53,7 @@ def test_keyboard_layout() -> None:
 
 
 def test_wake_keyboard_has_only_wake_buttons() -> None:
-    settings = replace(BASE, enable_control=False, enable_wake=True, wol_mac="04-7C-16-ED-7A-E0")
+    settings = replace(BASE, enable_control=False, enable_wake=True, wol_mac="02-AB-CD-EF-12-34")
     rows = [[button.text for button in row] for row in Bot(settings).keyboard().keyboard]
     assert rows == [["⚡ Включить ПК", "📡 Проверить ПК"]]
 

@@ -9,7 +9,7 @@ _MAC_RE = re.compile(r"^[0-9a-fA-F]{2}([:\-.]?[0-9a-fA-F]{2}){5}$")
 
 
 def parse_mac(mac: str) -> bytes:
-    """Parse a MAC like 04-7C-16-ED-7A-E0, 04:7c:16:ed:7a:e0 or 047c16ed7ae0."""
+    """Parse a MAC like 02-AB-CD-EF-12-34, 02:ab:cd:ef:12:34 or 02abcdef1234."""
     mac = mac.strip()
     if not _MAC_RE.match(mac):
         raise ValueError(f"Invalid MAC address: {mac!r}")

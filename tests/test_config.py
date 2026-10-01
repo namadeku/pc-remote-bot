@@ -43,7 +43,7 @@ def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_wake_enabled_by_mac(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BOT_TOKEN", "123:abc")
-    monkeypatch.setenv("WOL_MAC", "04-7C-16-ED-7A-E0")
+    monkeypatch.setenv("WOL_MAC", "02-AB-CD-EF-12-34")
     monkeypatch.setenv("ENABLE_CONTROL", "false")
     s = Settings.from_env()
     assert s.enable_wake
