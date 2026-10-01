@@ -1,14 +1,13 @@
-from pathlib import Path
-
 import pytest
 
+from pc_remote_bot import config
 from pc_remote_bot.config import Settings, parse_user_ids
 
 
 @pytest.fixture(autouse=True)
-def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # Keep a real .env in the project root out of the tests.
-    monkeypatch.chdir(tmp_path)
+def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Keep the real .env in the project root out of the tests.
+    monkeypatch.setattr(config, "load_dotenv", lambda: False)
     for name in (
         "BOT_TOKEN",
         "ALLOWED_USER_IDS",
