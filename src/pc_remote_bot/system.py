@@ -14,6 +14,7 @@ import psutil
 POWER_DELAY_S = 30
 CMD_TIMEOUT_S = 60
 CLAUDE_TIMEOUT_S = 300
+CLAUDE_DIR = Path.home() / ".pc-remote-bot" / "claude"
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -170,11 +171,19 @@ async def run_command(command: str, timeout_s: int = CMD_TIMEOUT_S) -> tuple[int
     )
 
 
-async def ask_claude(prompt: str, timeout_s: int = CLAUDE_TIMEOUT_S) -> tuple[int | None, str]:
-    """Ask Claude Code in non-interactive mode. Returns (exit code or None on timeout, answer)."""
+async def ask_claude(
+    prompt: str, new_chat: bool = False, timeout_s: int = CLAUDE_TIMEOUT_S
+) -> tuple[int | None, str]:
+    """Ask Claude Code in non-interactive mode. Returns (exit code or None on timeout, answer).
+
+    Continues the bot's previous conversation unless new_chat is set.
+    """
     exe = shutil.which("claude")
     if exe is None:
         return 1, "Claude Code не найден в PATH"
+    # --continue picks the latest conversation in the working folder, so the bot gets
+    # a folder of its own and never resumes the user's interactive sessions.
+    CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
+    args = [exe, "-p"] if new_chat else [exe, "-p", "--continue"]
     # The prompt goes through stdin so quotes and newlines need no escaping.
-    # Run from the home folder so the bot's own project is not picked up as context.
-    return await _communicate([exe, "-p"], timeout_s, stdin=prompt.encode("utf-8"), cwd=Path.home())
+    return await _communicate(args, timeout_s, stdin=prompt.encode("utf-8"), cwd=CLAUDE_DIR)

@@ -7,7 +7,7 @@ import pytest
 from telegram.ext import CommandHandler
 
 from pc_remote_bot import system
-from pc_remote_bot.bot import PENDING, Bot
+from pc_remote_bot.bot import NEW_CHAT, PENDING, Bot
 from pc_remote_bot.config import Settings
 
 BASE = Settings(
@@ -123,7 +123,7 @@ async def test_ask_button_then_text_asks_claude(monkeypatch: pytest.MonkeyPatch)
     update = fake_update("2+2?")
     await bot.on_text(update, context)
     assert PENDING not in context.user_data
-    ask_claude.assert_awaited_once_with("2+2?")
+    ask_claude.assert_awaited_once_with("2+2?", new_chat=False)
     assert replies(update)[-1] == "4"
 
 
@@ -132,3 +132,25 @@ async def test_ask_command_reports_failure(monkeypatch: pytest.MonkeyPatch) -> N
     update = fake_update("/ask 2+2?")
     await Bot(BASE).ask(update, fake_context())
     assert replies(update)[-1] == "[код выхода 1]\nboom"
+
+
+async def test_newchat_resets_only_the_next_question(monkeypatch: pytest.MonkeyPatch) -> None:
+    ask_claude = AsyncMock(return_value=(0, "ok"))
+    monkeypatch.setattr(system, "ask_claude", ask_claude)
+    bot = Bot(BASE)
+    context = fake_context()
+    await bot.newchat(fake_update("/newchat"), context)
+    await bot.ask(fake_update("/ask first"), context)
+    await bot.ask(fake_update("/ask second"), context)
+    assert [call.kwargs["new_chat"] for call in ask_claude.await_args_list] == [True, False]
+
+
+async def test_new_chat_button_sets_flag() -> None:
+    update, context = MagicMock(), fake_context()
+    update.callback_query.data = "claude:new"
+    update.callback_query.from_user.id = 42
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_reply_markup = AsyncMock()
+    update.callback_query.message.chat.send_message = AsyncMock()
+    await Bot(BASE).on_button(update, context)
+    assert context.user_data[NEW_CHAT] is True

@@ -16,7 +16,8 @@ processes, PowerShell commands, lock / sleep / reboot / shutdown.
 | `/ps` | 📋 Процессы | Top processes by memory |
 | `/kill chrome` or `/kill 1234` | ❌ Завершить процесс | Kills a process by name or PID |
 | `/cmd Get-Date` | ⌨️ PowerShell | Runs a PowerShell command (60 s timeout) |
-| `/ask question` | 🤖 Спросить Claude | Asks Claude Code via `claude -p` (5 min timeout) |
+| `/ask question` | 🤖 Спросить Claude | Asks Claude Code via `claude -p --continue`, keeping the conversation (5 min timeout) |
+| `/newchat` | 🆕 Новый диалог (under an answer) | Next question starts a new Claude conversation |
 | `/lock` | 🔒 Заблокировать | Locks the screen |
 | `/sleep` | 😴 Сон | Puts the PC to sleep |
 | `/reboot` | 🔄 Перезагрузка | Reboots in 30 s (with confirmation) |

@@ -1,4 +1,6 @@
 import sys
+from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -51,3 +53,19 @@ async def test_ask_claude_without_claude_installed(monkeypatch: pytest.MonkeyPat
     code, output = await system.ask_claude("hi")
     assert code == 1
     assert "не найден" in output
+
+
+@pytest.mark.parametrize(("new_chat", "has_continue"), [(False, True), (True, False)])
+async def test_ask_claude_continue_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, new_chat: bool, has_continue: bool
+) -> None:
+    communicate = AsyncMock(return_value=(0, "ok"))
+    monkeypatch.setattr(system.shutil, "which", lambda _: "claude.exe")
+    monkeypatch.setattr(system, "_communicate", communicate)
+    monkeypatch.setattr(system, "CLAUDE_DIR", tmp_path / "claude")
+    await system.ask_claude("hi", new_chat=new_chat)
+    call = communicate.await_args
+    assert call is not None
+    assert ("--continue" in call.args[0]) is has_continue
+    assert call.kwargs["cwd"] == tmp_path / "claude"
+    assert (tmp_path / "claude").is_dir()

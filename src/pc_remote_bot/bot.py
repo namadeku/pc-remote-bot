@@ -52,6 +52,13 @@ CANCEL_INPUT = InlineKeyboardMarkup(
     [[InlineKeyboardButton("Отмена", callback_data="input:cancel")]]
 )
 
+# user_data key: the next /ask starts a new Claude conversation instead of continuing.
+NEW_CHAT = "claude_new_chat"
+
+NEW_CHAT_BUTTON = InlineKeyboardMarkup(
+    [[InlineKeyboardButton("🆕 Новый диалог", callback_data="claude:new")]]
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Action:
@@ -65,18 +72,28 @@ class Action:
 
 
 async def reply_output(
-    message: Message, text: str, filename: str = "output.txt", pre: bool = True
+    message: Message,
+    text: str,
+    filename: str = "output.txt",
+    pre: bool = True,
+    reply_markup: InlineKeyboardMarkup | None = None,
 ) -> None:
     """Send text as a <pre> block (or plain text), or as a file when it is too long."""
     if not text:
         text = "(пусто)"
     if len(text) <= MAX_TEXT:
         if pre:
-            await message.reply_text(f"<pre>{html.escape(text)}</pre>", parse_mode=ParseMode.HTML)
+            await message.reply_text(
+                f"<pre>{html.escape(text)}</pre>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
+            )
         else:
-            await message.reply_text(text)
+            await message.reply_text(text, reply_markup=reply_markup)
     else:
-        await message.reply_document(io.BytesIO(text.encode("utf-8")), filename=filename)
+        await message.reply_document(
+            io.BytesIO(text.encode("utf-8")), filename=filename, reply_markup=reply_markup
+        )
 
 
 class Bot:
@@ -106,6 +123,7 @@ class Bot:
                 ),
                 Action("cmd", "Выполнить PowerShell: /cmd Get-Date", self.cmd, "⌨️ PowerShell", 4),
                 Action("ask", "Спросить Claude: /ask вопрос", self.ask, "🤖 Спросить Claude", 4),
+                Action("newchat", "Начать новый диалог с Claude", self.newchat),
                 Action("lock", "Заблокировать экран", self.lock, "🔒 Заблокировать", 4),
                 Action("sleep", "Сон", self.sleep, "😴 Сон", 5),
                 Action("reboot", "Перезагрузить", self.reboot, "🔄 Перезагрузка", 5),
@@ -189,7 +207,7 @@ class Bot:
         if pending == "cmd":
             await self._run_cmd(update.message, text)
         elif pending == "ask":
-            await self._ask(update.message, text)
+            await self._ask(update.message, text, context.user_data)
         elif pending == "kill":
             await self._kill(update.message, text)
         else:
@@ -228,6 +246,12 @@ class Bot:
             await query.edit_message_text("Отменено")
         elif kind == "power":
             await self._do_power(query.edit_message_text, value)
+        elif kind == "claude":
+            assert context.user_data is not None
+            context.user_data[NEW_CHAT] = True
+            await query.edit_message_reply_markup(None)
+            assert query.message
+            await query.message.chat.send_message("Следующий вопрос начнёт новый диалог с Claude")
 
     # --- wake ---
 
@@ -361,20 +385,28 @@ class Bot:
     async def ask(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         assert update.message
         assert update.message.text
+        assert context.user_data is not None
         parts = update.message.text.split(maxsplit=1)
         if parts[0].startswith("/") and len(parts) == 2:
-            await self._ask(update.message, parts[1])
+            await self._ask(update.message, parts[1], context.user_data)
             return
-        assert context.user_data is not None
         context.user_data[PENDING] = "ask"
         await update.message.reply_text("Напишите вопрос для Claude", reply_markup=CANCEL_INPUT)
 
-    async def _ask(self, message: Message, prompt: str) -> None:
+    async def _ask(self, message: Message, prompt: str, user_data: dict[Any, Any]) -> None:
         log.info("ask: %s", prompt)
         await message.reply_text("🤖 Claude думает…")
-        code, answer = await system.ask_claude(prompt)
+        code, answer = await system.ask_claude(prompt, new_chat=user_data.pop(NEW_CHAT, False))
         if code is None:
             answer = f"[таймаут]\n{answer}"
         elif code != 0:
             answer = f"[код выхода {code}]\n{answer}"
-        await reply_output(message, answer, filename="answer.md", pre=False)
+        await reply_output(
+            message, answer, filename="answer.md", pre=False, reply_markup=NEW_CHAT_BUTTON
+        )
+
+    async def newchat(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        assert update.message
+        assert context.user_data is not None
+        context.user_data[NEW_CHAT] = True
+        await update.message.reply_text("Следующий вопрос начнёт новый диалог с Claude")
