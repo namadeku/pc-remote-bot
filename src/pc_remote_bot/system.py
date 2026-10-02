@@ -2,8 +2,10 @@
 
 import asyncio
 import datetime as dt
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import mss
 import mss.tools
@@ -11,6 +13,7 @@ import psutil
 
 POWER_DELAY_S = 30
 CMD_TIMEOUT_S = 60
+CLAUDE_TIMEOUT_S = 300
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -118,24 +121,60 @@ def kill(target: str) -> list[str]:
     return killed
 
 
-async def run_command(command: str, timeout_s: int = CMD_TIMEOUT_S) -> tuple[int | None, str]:
-    """Run a PowerShell command. Returns (exit code or None on timeout, output)."""
+def _kill_tree(pid: int) -> None:
+    try:
+        parent = psutil.Process(pid)
+        procs = [*parent.children(recursive=True), parent]
+    except psutil.Error:
+        return
+    for p in procs:
+        try:
+            p.kill()
+        except psutil.Error:
+            continue
+
+
+async def _communicate(
+    args: list[str], timeout_s: int, stdin: bytes | None = None, cwd: Path | None = None
+) -> tuple[int | None, str]:
+    """Run a process, merging stderr into stdout. Kills the whole tree on timeout."""
     proc = await asyncio.create_subprocess_exec(
-        "powershell.exe",
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        # Force UTF-8 output so Cyrillic text survives decoding.
-        f"[Console]::OutputEncoding=[Text.Encoding]::UTF8; {command}",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        stdin=asyncio.subprocess.DEVNULL,
+        stdin=asyncio.subprocess.DEVNULL if stdin is None else asyncio.subprocess.PIPE,
+        cwd=cwd,
         creationflags=_NO_WINDOW,
     )
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout_s)
+        stdout, _ = await asyncio.wait_for(proc.communicate(stdin), timeout_s)
     except TimeoutError:
-        proc.kill()
+        _kill_tree(proc.pid)
         await proc.wait()
         return None, f"Таймаут {timeout_s} с, процесс остановлен"
     return proc.returncode, stdout.decode("utf-8", errors="replace").strip()
+
+
+async def run_command(command: str, timeout_s: int = CMD_TIMEOUT_S) -> tuple[int | None, str]:
+    """Run a PowerShell command. Returns (exit code or None on timeout, output)."""
+    return await _communicate(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            # Force UTF-8 output so Cyrillic text survives decoding.
+            f"[Console]::OutputEncoding=[Text.Encoding]::UTF8; {command}",
+        ],
+        timeout_s,
+    )
+
+
+async def ask_claude(prompt: str, timeout_s: int = CLAUDE_TIMEOUT_S) -> tuple[int | None, str]:
+    """Ask Claude Code in non-interactive mode. Returns (exit code or None on timeout, answer)."""
+    exe = shutil.which("claude")
+    if exe is None:
+        return 1, "Claude Code не найден в PATH"
+    # The prompt goes through stdin so quotes and newlines need no escaping.
+    # Run from the home folder so the bot's own project is not picked up as context.
+    return await _communicate([exe, "-p"], timeout_s, stdin=prompt.encode("utf-8"), cwd=Path.home())

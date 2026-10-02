@@ -44,3 +44,10 @@ async def test_run_command_utf8() -> None:
 async def test_run_command_timeout() -> None:
     code, _ = await system.run_command("Start-Sleep 5", timeout_s=1)
     assert code is None
+
+
+async def test_ask_claude_without_claude_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(system.shutil, "which", lambda _: None)
+    code, output = await system.ask_claude("hi")
+    assert code == 1
+    assert "не найден" in output

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from telegram.ext import CommandHandler
 
+from pc_remote_bot import system
 from pc_remote_bot.bot import PENDING, Bot
 from pc_remote_bot.config import Settings
 
@@ -109,3 +110,25 @@ async def test_unexpected_text_shows_hint() -> None:
     update = fake_update("привет")
     await bot.on_text(update, fake_context())
     assert "кнопкой" in replies(update)[0]
+
+
+async def test_ask_button_then_text_asks_claude(monkeypatch: pytest.MonkeyPatch) -> None:
+    ask_claude = AsyncMock(return_value=(0, "4"))
+    monkeypatch.setattr(system, "ask_claude", ask_claude)
+    bot = Bot(BASE)
+    context = fake_context()
+    await bot.on_keyboard_button(fake_update("🤖 Спросить Claude"), context)
+    assert context.user_data[PENDING] == "ask"
+
+    update = fake_update("2+2?")
+    await bot.on_text(update, context)
+    assert PENDING not in context.user_data
+    ask_claude.assert_awaited_once_with("2+2?")
+    assert replies(update)[-1] == "4"
+
+
+async def test_ask_command_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(system, "ask_claude", AsyncMock(return_value=(1, "boom")))
+    update = fake_update("/ask 2+2?")
+    await Bot(BASE).ask(update, fake_context())
+    assert replies(update)[-1] == "[код выхода 1]\nboom"

@@ -45,7 +45,7 @@ POWER_ACTIONS: dict[str, tuple[str, Callable[[], None]]] = {
     "sleep": ("Перевести ПК в сон", system.sleep),
 }
 
-# user_data key: what the next plain text message is for ("cmd" or "kill").
+# user_data key: what the next plain text message is for ("cmd", "ask" or "kill").
 PENDING = "pending_input"
 
 CANCEL_INPUT = InlineKeyboardMarkup(
@@ -64,12 +64,17 @@ class Action:
     row: int = 0
 
 
-async def reply_output(message: Message, text: str, filename: str = "output.txt") -> None:
-    """Send text as a <pre> block, or as a file when it is too long."""
+async def reply_output(
+    message: Message, text: str, filename: str = "output.txt", pre: bool = True
+) -> None:
+    """Send text as a <pre> block (or plain text), or as a file when it is too long."""
     if not text:
         text = "(пусто)"
     if len(text) <= MAX_TEXT:
-        await message.reply_text(f"<pre>{html.escape(text)}</pre>", parse_mode=ParseMode.HTML)
+        if pre:
+            await message.reply_text(f"<pre>{html.escape(text)}</pre>", parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(text)
     else:
         await message.reply_document(io.BytesIO(text.encode("utf-8")), filename=filename)
 
@@ -100,6 +105,7 @@ class Bot:
                     3,
                 ),
                 Action("cmd", "Выполнить PowerShell: /cmd Get-Date", self.cmd, "⌨️ PowerShell", 4),
+                Action("ask", "Спросить Claude: /ask вопрос", self.ask, "🤖 Спросить Claude", 4),
                 Action("lock", "Заблокировать экран", self.lock, "🔒 Заблокировать", 4),
                 Action("sleep", "Сон", self.sleep, "😴 Сон", 5),
                 Action("reboot", "Перезагрузить", self.reboot, "🔄 Перезагрузка", 5),
@@ -182,6 +188,8 @@ class Bot:
         text = update.message.text.strip()
         if pending == "cmd":
             await self._run_cmd(update.message, text)
+        elif pending == "ask":
+            await self._ask(update.message, text)
         elif pending == "kill":
             await self._kill(update.message, text)
         else:
@@ -349,3 +357,24 @@ class Bot:
         code, output = await system.run_command(command)
         header = "таймаут" if code is None else f"код выхода {code}"
         await reply_output(message, f"[{header}]\n{output}")
+
+    async def ask(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        assert update.message
+        assert update.message.text
+        parts = update.message.text.split(maxsplit=1)
+        if parts[0].startswith("/") and len(parts) == 2:
+            await self._ask(update.message, parts[1])
+            return
+        assert context.user_data is not None
+        context.user_data[PENDING] = "ask"
+        await update.message.reply_text("Напишите вопрос для Claude", reply_markup=CANCEL_INPUT)
+
+    async def _ask(self, message: Message, prompt: str) -> None:
+        log.info("ask: %s", prompt)
+        await message.reply_text("🤖 Claude думает…")
+        code, answer = await system.ask_claude(prompt)
+        if code is None:
+            answer = f"[таймаут]\n{answer}"
+        elif code != 0:
+            answer = f"[код выхода {code}]\n{answer}"
+        await reply_output(message, answer, filename="answer.md", pre=False)
